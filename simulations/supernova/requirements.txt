@@ -1,0 +1,3 @@
+# Supernova Turtle Visualization
+# Python 3.10+ standard library only (turtle, math, random).
+# No external dependencies.

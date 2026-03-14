@@ -1,0 +1,40 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Virtual environments
+venv/
+.env/
+.venv/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# Temporary files
+*.tmp
+*.swp
+
+# Local exports (from notebook)
+exports/
+*.xlsx
+*.png
+
+# Mac metadata
+.AppleDouble
+.LSOverride
+
+# nanoHUB uploads (optional)
+helpers.zip

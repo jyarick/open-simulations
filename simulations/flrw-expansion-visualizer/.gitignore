@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# Environments
+.venv/
+venv/
+env/
+
+# Jupyter (if you add later)
+.ipynb_checkpoints/
+
+# Misc
+*.log
