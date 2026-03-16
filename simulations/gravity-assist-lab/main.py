@@ -1,172 +1,217 @@
 """
 Gravity Assist Lab - Main entry point.
-Simulates gravitational slingshot (gravity assist) mechanics.
+Real-time 2D gravitational slingshot simulation with interactive controls.
 """
 
-import math
-import numpy as np
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+import pygame
+import sys
 
-from config.constants import (
-    G,
-    STAR_MASS,
-    PLANET_MASS,
-    PLANET_ORBIT_RADIUS,
-    PLANET_ORBIT_SPEED,
-    SPACECRAFT_MASS,
-    SIMULATION_DT,
+from config import (
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    FPS,
+    PANEL_WIDTH,
+    TIME_SCALE_MIN,
+    TIME_SCALE_MAX,
+    VIEW_SCALE_MIN,
+    VIEW_SCALE_MAX,
     TRAIL_LENGTH,
-    VIEW_SCALE,
+    TRAIL_LENGTH_MIN,
+    TRAIL_LENGTH_MAX,
 )
-
-from simulation.universe import Universe
-from visuals.renderer import Renderer
-from visuals.trails import TrailManager
-
-# =============================================================================
-# TUNABLE PARAMETERS - Change these to explore different scenarios
-# =============================================================================
-
-# Planet
-planet_mass = 1e-5
-planet_orbit_radius = 1.0
-planet_orbit_speed = 1.0
-
-# Spacecraft initial conditions
-# Entry angle: degrees from +x axis (0 = right, 90 = up)
-# Speed relative to orbital velocity scale
-spacecraft_initial_speed = 0.85
-spacecraft_entry_angle = 15.0  # degrees - slight upward angle for good assist
-spacecraft_start_x = -2.0  # Start far left
-spacecraft_start_y = -0.3  # Slightly below center
-
-# Simulation
-simulation_dt = 0.002  # Smaller = more accurate, slower
-frames_per_second = 60
-trail_length = TRAIL_LENGTH
-
-# =============================================================================
-# Setup
-# =============================================================================
-
-
-def make_initial_velocity() -> np.ndarray:
-    """Compute initial velocity from speed and entry angle."""
-    angle_rad = math.radians(spacecraft_entry_angle)
-    return spacecraft_initial_speed * np.array([np.cos(angle_rad), np.sin(angle_rad)])
+from simulation import Simulation
+from renderer import Renderer
+from ui import Slider, Button, Checkbox, ControlPanel, COLOR_PANEL_BG
 
 
 def main() -> None:
-    # Initial conditions
-    spacecraft_position = np.array([spacecraft_start_x, spacecraft_start_y])
-    spacecraft_velocity = make_initial_velocity()
+    pygame.init()
+    pygame.display.set_caption("Gravity Assist Lab")
 
-    # Create universe and visuals
-    universe = Universe(
-        star_mass=STAR_MASS,
-        planet_mass=planet_mass,
-        planet_orbit_radius=planet_orbit_radius,
-        planet_orbit_speed=planet_orbit_speed,
-        spacecraft_position=spacecraft_position,
-        spacecraft_velocity=spacecraft_velocity,
-        dt=simulation_dt,
-    )
-    trail = TrailManager(max_length=trail_length)
+    screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+    clock = pygame.time.Clock()
+
+    viewport_w = SCREEN_WIDTH - PANEL_WIDTH
+    viewport_h = SCREEN_HEIGHT
+    viewport = (0, 0, viewport_w, viewport_h)
+
+    sim = Simulation()
     renderer = Renderer(
-        view_scale=VIEW_SCALE,
+        screen,
+        show_trails=True,
         show_velocity_arrows=True,
         show_gravity_rings=True,
-        velocity_arrow_scale=0.12,
+        show_hud=True,
     )
 
-    # Track speeds for reporting and visualization
-    encounter_radius = 1.5  # Distance threshold for "in encounter"
-    initial_speed = universe.spacecraft.speed
-    max_speed = initial_speed
-    incoming_speed = initial_speed
-    outgoing_speed = None
-    in_encounter = False
-    had_encounter = False
+    # Control panel
+    panel_x = viewport_w
+    panel = ControlPanel(panel_x, 0, PANEL_WIDTH, SCREEN_HEIGHT)
+    panel.rect = pygame.Rect(panel_x, 0, PANEL_WIDTH, SCREEN_HEIGHT)
 
-    renderer.setup_figure()
+    y = 45
+    row_h = 50
 
-    def init_anim() -> None:
-        trail.add(universe.spacecraft.position.copy(), universe.spacecraft.speed)
+    # Time scale slider
+    time_slider = Slider(panel_x + 15, y, PANEL_WIDTH - 30, sim.time_scale, TIME_SCALE_MIN, TIME_SCALE_MAX, "Time scale", 1)
+    panel.add_slider(time_slider)
+    y += row_h
 
-    def update(frame: int) -> None:
-        nonlocal incoming_speed, outgoing_speed, in_encounter, had_encounter, max_speed
+    # View scale (zoom) slider
+    zoom_slider = Slider(panel_x + 15, y, PANEL_WIDTH - 30, sim.view_scale, VIEW_SCALE_MIN, VIEW_SCALE_MAX, "Zoom", 1)
+    panel.add_slider(zoom_slider)
+    y += row_h
 
-        # Run multiple physics steps per frame for smoother motion
-        steps_per_frame = max(1, int(1.0 / (frames_per_second * simulation_dt)))
-        steps_per_frame = min(steps_per_frame, 10)
+    # Trail length slider
+    trail_slider = Slider(panel_x + 15, y, PANEL_WIDTH - 30, TRAIL_LENGTH, TRAIL_LENGTH_MIN, TRAIL_LENGTH_MAX, "Trail length", 0)
+    panel.add_slider(trail_slider)
+    y += row_h
 
+    # Initial speed slider (for next launch)
+    sc = sim.preset["spacecraft"]
+    speed_slider = Slider(panel_x + 15, y, PANEL_WIDTH - 30, sc["speed"], 0.3, 1.2, "Launch speed", 2)
+    panel.add_slider(speed_slider)
+    y += row_h
+
+    # Initial angle slider
+    angle_slider = Slider(panel_x + 15, y, PANEL_WIDTH - 30, sc["angle_deg"], -45, 45, "Launch angle (°)", 1)
+    panel.add_slider(angle_slider)
+    y += row_h + 10
+
+    # Checkboxes
+    trails_cb = Checkbox(panel_x + 15, y, "Trails", renderer.show_trails, lambda v: setattr(renderer, "show_trails", v))
+    panel.add_checkbox(trails_cb)
+    y += 28
+    arrows_cb = Checkbox(panel_x + 15, y, "Velocity arrows", renderer.show_velocity_arrows, lambda v: setattr(renderer, "show_velocity_arrows", v))
+    panel.add_checkbox(arrows_cb)
+    y += 28
+    rings_cb = Checkbox(panel_x + 15, y, "Gravity rings", renderer.show_gravity_rings, lambda v: setattr(renderer, "show_gravity_rings", v))
+    panel.add_checkbox(rings_cb)
+    y += 28
+    hud_cb = Checkbox(panel_x + 15, y, "HUD", renderer.show_hud, lambda v: setattr(renderer, "show_hud", v))
+    panel.add_checkbox(hud_cb)
+    y += 40
+
+    # Buttons
+    btn_w = PANEL_WIDTH - 30
+    btn_h = 32
+
+    def _on_reset() -> None:
+        sim._override_speed = None
+        sim._override_angle = None
+        sim.reset()
+        sync_sliders_from_preset()
+
+    reset_btn = Button(panel_x + 15, y, btn_w, btn_h, "Reset (R)", _on_reset)
+    panel.add_button(reset_btn)
+    y += btn_h + 8
+
+    new_btn = Button(panel_x + 15, y, btn_w, btn_h, "New spacecraft (N)", lambda: _on_new_spacecraft())
+    panel.add_button(new_btn)
+    y += btn_h + 8
+
+    def _prev_preset() -> None:
+        sim.prev_preset()
+        sync_sliders_from_preset()
+
+    def _next_preset() -> None:
+        sim.next_preset()
+        sync_sliders_from_preset()
+
+    prev_btn = Button(panel_x + 15, y, btn_w // 2 - 4, btn_h, "◀ Preset", _prev_preset)
+    panel.add_button(prev_btn)
+    next_btn = Button(panel_x + 15 + btn_w // 2 + 4, y, btn_w // 2 - 4, btn_h, "Preset ▶", _next_preset)
+    panel.add_button(next_btn)
+
+    def _on_new_spacecraft() -> None:
+        sim.set_initial_override(speed_slider.value, angle_slider.value)
+        sim.new_spacecraft()
+
+    def sync_sliders_from_preset() -> None:
+        sc = sim.preset["spacecraft"]
+        speed_slider.value = sc["speed"]
+        angle_slider.value = sc["angle_deg"]
+
+    # Run multiple physics steps per frame for smooth motion
+    steps_per_frame = max(1, int(1.0 / (FPS * sim.dt)))
+    steps_per_frame = min(steps_per_frame, 15)
+
+    running = True
+    while running:
+        # Event handling
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            elif panel.handle_event(event):
+                pass  # UI handled it
+            elif event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                elif event.key == pygame.K_SPACE:
+                    sim.paused = not sim.paused
+                elif event.key == pygame.K_r:
+                    sim._override_speed = None
+                    sim._override_angle = None
+                    sim.reset()
+                    sync_sliders_from_preset()
+                elif event.key == pygame.K_n:
+                    sim.set_initial_override(speed_slider.value, angle_slider.value)
+                    sim.new_spacecraft()
+                elif event.key == pygame.K_p:
+                    sim.toggle_planet_pause()
+                elif event.key == pygame.K_t:
+                    renderer.show_trails = not renderer.show_trails
+                    trails_cb.checked = renderer.show_trails
+                elif event.key == pygame.K_v:
+                    renderer.show_velocity_arrows = not renderer.show_velocity_arrows
+                    arrows_cb.checked = renderer.show_velocity_arrows
+                elif event.key == pygame.K_g:
+                    renderer.show_gravity_rings = not renderer.show_gravity_rings
+                    rings_cb.checked = renderer.show_gravity_rings
+                elif event.key == pygame.K_h:
+                    renderer.show_hud = not renderer.show_hud
+                    hud_cb.checked = renderer.show_hud
+                elif event.key == pygame.K_LEFTBRACKET:
+                    sim.prev_preset()
+                    sync_sliders_from_preset()
+                elif event.key == pygame.K_RIGHTBRACKET:
+                    sim.next_preset()
+                    sync_sliders_from_preset()
+
+        # Apply slider values (live updates)
+        sim.time_scale = time_slider.value
+        sim.view_scale = zoom_slider.value
+        sim.set_trail_length(int(trail_slider.value))
+
+        # Physics steps
         for _ in range(steps_per_frame):
-            dist = np.linalg.norm(
-                universe.spacecraft.position - universe.planet.position
-            )
-            if dist < encounter_radius:
-                if not in_encounter:
-                    incoming_speed = universe.spacecraft.speed
-                in_encounter = True
-                had_encounter = True
-            else:
-                if in_encounter:
-                    outgoing_speed = universe.spacecraft.speed
-                in_encounter = False
-
-            universe.step()
-            max_speed = max(max_speed, universe.spacecraft.speed)
-            trail.add(universe.spacecraft.position.copy(), universe.spacecraft.speed)
-
-        trail_points, trail_speeds = trail.get_points_and_speeds()
-        speed_min = initial_speed
-        speed_max = max(max_speed, initial_speed * 1.01)
+            sim.step()
 
         # Render
-        renderer.render_frame(
-            star_pos=universe.star.position,
-            planet_pos=universe.planet.position,
-            spacecraft_pos=universe.spacecraft.position,
-            spacecraft_vel=universe.spacecraft.velocity,
-            trail_points=trail_points,
-            trail_speeds=trail_speeds,
-            speed_min=speed_min,
-            speed_max=speed_max,
-            current_speed=universe.spacecraft.speed,
-            initial_speed=initial_speed,
-            max_speed=max_speed,
-        )
-        return []
+        viewport = (0, 0, viewport_w, viewport_h)
+        renderer.render_frame(sim, viewport, sim.view_scale)
 
-    # Run animation
-    anim = FuncAnimation(
-        renderer.fig,
-        update,
-        init_func=init_anim,
-        frames=2000,
-        interval=1000 / frames_per_second,
-        blit=False,
-    )
+        # Draw control panel
+        pygame.draw.rect(screen, COLOR_PANEL_BG, panel.rect)
+        pygame.draw.rect(screen, (50, 50, 70), panel.rect, 1)
+        for slider in panel.sliders:
+            slider.draw(screen)
+        for checkbox in panel.checkboxes:
+            checkbox.draw(screen)
+        for button in panel.buttons:
+            button.draw(screen)
+        # Panel title and preset name
+        font = pygame.font.Font(None, 24)
+        title = font.render("Controls", True, (180, 190, 210))
+        screen.blit(title, (panel_x + 12, 12))
+        preset_label = font.render(sim.preset["name"], True, (140, 160, 200))
+        screen.blit(preset_label, (panel_x + 12, SCREEN_HEIGHT - 25))
 
-    plt.tight_layout()
-    plt.show()
+        pygame.display.flip()
+        clock.tick(FPS)
 
-    # Print results after window closes
-    final_speed = universe.spacecraft.speed
-    if outgoing_speed is None:
-        outgoing_speed = final_speed if had_encounter else initial_speed
-
-    print("\n" + "=" * 50)
-    print("GRAVITY ASSIST LAB - Results")
-    print("=" * 50)
-    print(f"Incoming speed:  {incoming_speed:.4f}")
-    print(f"Outgoing speed: {outgoing_speed:.4f}")
-    print(f"Speed change:    {outgoing_speed - incoming_speed:+.4f}")
-    ke_in = 0.5 * SPACECRAFT_MASS * incoming_speed**2
-    ke_out = 0.5 * SPACECRAFT_MASS * outgoing_speed**2
-    print(f"Energy change:   {ke_out - ke_in:+.4f}")
-    print("=" * 50)
+    pygame.quit()
+    sys.exit(0)
 
 
 if __name__ == "__main__":

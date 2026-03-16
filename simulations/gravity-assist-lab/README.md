@@ -1,16 +1,18 @@
 # Gravity Assist Lab
 
-A Python visualization that demonstrates **gravitational slingshot** (gravity assist) mechanics—the technique used by Voyager and other spacecraft to gain speed by flying past planets.
+A real-time **2D gravitational slingshot simulation** built with Python and Pygame. Watch a spacecraft gain or lose heliocentric energy by passing near moving planets—the classic *gravity assist* maneuver used by NASA and ESA for interplanetary missions.
 
-## Features
+## What is Gravity Assist?
 
-- **Physics-based simulation** using Newtonian gravity
-- **RK4 integrator** for accurate orbital mechanics
-- **Dark space aesthetic** with star, planet, spacecraft, and trajectory trails
-- **Velocity vector arrows** and optional gravity field rings
-- **Incoming/outgoing speed** and energy change printed after the run
+A **gravity assist** (or *gravitational slingshot*) is a maneuver where a spacecraft passes close to a moving planet. The planet's gravity bends the spacecraft's trajectory, and because the planet is moving, the spacecraft can **gain or lose speed** relative to the star—without firing its engines. The energy comes from the planet's orbital motion.
 
-## Quick Start
+**Key ideas this simulation makes intuitive:**
+- Gravity assist changes heliocentric energy because the planet is moving
+- Not every flyby produces escape—geometry matters
+- Passing *behind* a planet (trailing side) can increase energy; passing *in front* can decrease it
+- Multiple assists can build toward escape
+
+## How to Run
 
 ```bash
 cd gravity-assist-lab
@@ -18,51 +20,112 @@ pip install -r requirements.txt
 python main.py
 ```
 
-## Tunable Parameters
+## Dependencies
 
-Edit the top of `main.py` to explore different scenarios:
+- **Python** 3.9+
+- **pygame** – graphics and real-time rendering
+- **numpy** – vector math and numerical integration
 
-| Parameter | Description |
-|-----------|-------------|
-| `planet_mass` | Planet mass (affects gravity strength) |
-| `planet_orbit_radius` | Distance from star |
-| `planet_orbit_speed` | Orbital angular velocity |
-| `spacecraft_initial_speed` | Approach speed |
-| `spacecraft_entry_angle` | Approach angle (degrees from +x) |
-| `spacecraft_start_x`, `spacecraft_start_y` | Starting position |
-| `simulation_dt` | Time step (smaller = more accurate) |
+## Controls
+
+### Interactive Panel (right side)
+
+Adjust parameters **mid-simulation** with sliders and buttons:
+
+| Control | Effect |
+|---------|--------|
+| **Time scale** | Speed up or slow down the simulation (0.1x–4x) |
+| **Zoom** | Zoom in/out on the view (1x–6x) |
+| **Trail length** | Number of trail points (100–2000) |
+| **Launch speed** | Initial speed for next spacecraft (0.3–1.2) |
+| **Launch angle** | Entry angle in degrees (−45° to 45°) |
+| **Trails / Arrows / Rings / HUD** | Toggle visual elements |
+| **Reset** | Restore preset initial conditions |
+| **New spacecraft** | Launch with current slider values |
+| **◀ Preset / Preset ▶** | Switch scenario preset |
+
+### Keyboard Shortcuts
+
+| Key | Action |
+|-----|--------|
+| **Space** | Pause / Resume |
+| **R** | Reset simulation |
+| **N** | Launch new spacecraft (uses slider values) |
+| **P** | Pause planet motion (for testing) |
+| **[ / ]** | Previous / Next scenario preset |
+| **Up / Down** | Increase / Decrease time scale |
+| **T** | Toggle trails |
+| **V** | Toggle velocity vectors |
+| **G** | Toggle gravity rings |
+| **H** | Toggle HUD overlay |
+| **ESC** | Quit |
+
+## Scenario Presets
+
+Switch presets with **[** and **]** to explore different flyby outcomes:
+
+| Preset | Description |
+|--------|-------------|
+| **Weak assist** | Small boost from inner planet, stays bound |
+| **Strong assist** | Larger boost from inner planet, still bound |
+| **Braking assist** | Pass in front of planet: lose heliocentric energy |
+| **Near escape** | Jupiter assist brings ε close to zero |
+| **Full escape** | Pass behind Jupiter: prograde assist produces solar escape |
+| **Two-planet assist** | Inner then outer planet: multiple assists build toward escape |
+
+## Heliocentric Energy (ε)
+
+The HUD displays **heliocentric specific orbital energy**:
+
+\[
+\varepsilon = \frac{v^2}{2} - \frac{\mu}{r}
+\]
+
+- **ε < 0** → **Bound to star** (elliptical orbit)
+- **ε = 0** → Parabolic (escape threshold)
+- **ε > 0** → **Escape trajectory** (hyperbolic, leaving the system)
+
+This is the key diagnostic: whether the slingshot actually produced solar escape, not just a visual bend.
 
 ## Project Structure
 
 ```
 gravity-assist-lab/
-├── main.py              # Entry point, parameters, animation loop
-├── config/
-│   └── constants.py     # Physical constants, defaults
-├── physics/
-│   ├── bodies.py        # Star, planet, spacecraft
-│   ├── gravity.py       # Newtonian gravity
-│   └── integrator.py    # RK4, semi-implicit Euler
-├── simulation/
-│   ├── universe.py      # Manages all bodies
-│   └── spacecraft.py   # Spacecraft dynamics
-└── visuals/
-    ├── renderer.py      # Matplotlib rendering
-    └── trails.py        # Trajectory trail
+├── main.py          # Pygame loop, event handling, UI wiring
+├── config.py        # Constants, presets, planet definitions
+├── physics.py       # Gravity, integration, heliocentric energy
+├── entities.py      # Star, Planet, Spacecraft classes
+├── simulation.py    # Simulation state, update loop, presets
+├── renderer.py      # Drawing: bodies, trails, HUD
+├── ui.py            # Interactive controls: sliders, buttons, checkboxes
+├── utils.py         # Coordinate conversion, trail manager
+├── README.md
+├── requirements.txt
+└── assets/          # (optional, for future use)
 ```
 
-## How It Works
+## Tunable Parameters
 
-1. **Star** is fixed at the center.
-2. **Planet** orbits the star in a circular path.
-3. **Spacecraft** experiences gravity from both star and planet.
-4. When the spacecraft passes *behind* the moving planet, it gains speed (gravity assist).
+Edit `config.py` to adjust:
 
-The velocity change occurs because the spacecraft exchanges momentum with the planet—the planet slows down slightly while the spacecraft speeds up.
+- Screen size, colors
+- Star mass and position
+- **Planet definitions** (inner, Jupiter-like outer): mass, orbit radius, phase
+- **Scenario presets**: spacecraft initial position, speed, entry angle
+- Simulation timestep, trail length
+- View scale, vector arrow scale
 
-## Future Extensions
+## Educational Purpose
 
-- Multiple planets
-- Interactive sliders
-- Pygame for smoother animation
-- Mission planning tools
+This project is designed for learning and visualization. It demonstrates:
+
+1. **Newtonian gravity** – \( \vec{a} = G M \frac{\vec{r}}{|\vec{r}|^3} \)
+2. **Orbital mechanics** – circular orbits, flyby trajectories
+3. **Heliocentric energy** – ε determines bound vs escape
+4. **Energy transfer** – how a moving planet can boost or brake a spacecraft
+
+The simulation uses RK4 integration for accurate trajectories and a speed-colored trail to make the slingshot effect intuitive.
+
+## License
+
+Part of the Open Physics Simulations project.
